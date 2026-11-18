@@ -411,7 +411,7 @@ h3 {
 .legend-bar {
   height: 10px;
   border-radius: 99px;
-  background: linear-gradient(90deg, #fff, rgb(220, 38, 38));
+  background: linear-gradient(90deg, #fff, rgb(249, 115, 22), rgb(220, 38, 38));
   border: 1px solid var(--line);
 }
 .legend-labels {

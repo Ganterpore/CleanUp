@@ -3,9 +3,10 @@ import type { CleanObj } from './types';
 export const DAY = 86_400_000;
 
 const WHITE = [255, 255, 255];
+const ORANGE = [249, 115, 22];
 const RED = [220, 38, 38];
 
-/** 0 = just cleaned (white), 1 = twice the schedule has passed (full red). */
+/** 0 = just cleaned (white), 0.5 = due (orange), 1 = twice the schedule has passed (full red). */
 export function staleness(o: CleanObj, now: number): number {
   if (o.lastCleaned === null) return 1;
   const days = (now - o.lastCleaned) / DAY;
@@ -13,7 +14,8 @@ export function staleness(o: CleanObj, now: number): number {
 }
 
 export function stalenessColor(t: number): string {
-  const c = WHITE.map((w, i) => Math.round(w + (RED[i] - w) * t));
+  const [from, to, k] = t <= 0.5 ? [WHITE, ORANGE, t / 0.5] : [ORANGE, RED, (t - 0.5) / 0.5];
+  const c = from.map((f, i) => Math.round(f + (to[i] - f) * k));
   return `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
 }
 
