@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { downloadJson, loadFloorImage, parseExport, pickFile } from '../imageLoad';
 import { useStore } from '../store';
+import { isSyncConfigured } from '../sync/engine';
 import { Icon } from './Icon';
+import { SyncButton } from './SyncDialog';
 
 export function Header() {
   const mode = useStore((s) => s.mode);
@@ -50,7 +52,10 @@ export function Header() {
     }
   };
   const startOver = () => {
-    if (confirm('Delete your whole house layout and cleaning history? Consider exporting a backup first.')) {
+    const msg = isSyncConfigured()
+      ? 'Delete your whole house layout and cleaning history on EVERY synced device? Consider exporting a backup first.'
+      : 'Delete your whole house layout and cleaning history? Consider exporting a backup first.';
+    if (confirm(msg)) {
       useStore.getState().resetAll();
     }
   };
@@ -70,6 +75,7 @@ export function Header() {
         </button>
       </div>
       <div className="header-actions">
+        <SyncButton />
         <button className="icon-btn" title="Fit to screen" onClick={requestFit}>
           <Icon name="fit" />
         </button>

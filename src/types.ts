@@ -24,9 +24,13 @@ export interface CleanObj {
   history: number[];
   /** For items: the room the item sits in (derived from geometry). */
   roomId: string | null;
+  /** Sync timestamps: last layout/name/schedule edit, and last cleaning-record edit. */
+  editedAt: number;
+  cleanEditedAt: number;
 }
 
 export interface FloorImage {
+  id: string;
   src: string;
   width: number;
   height: number;

@@ -9,14 +9,22 @@ export interface Toast {
   action?: { label: string; run: () => void };
 }
 
+export type SyncStatus = 'off' | 'idle' | 'syncing' | 'offline' | 'error';
+
 interface State {
   // persisted
   objects: CleanObj[];
+  /** Tombstones for synced deletes: id → deletedAt. */
+  deleted: Record<string, number>;
   image: FloorImage | null;
   imageOpacity: number;
+  /** When the plan image/opacity last changed (sync LWW). */
+  planEditedAt: number;
   started: boolean;
   mode: Mode;
   // session-only
+  sync: { status: SyncStatus; lastSynced: number | null; message: string | null };
+  syncDialogOpen: boolean;
   tool: Tool;
   drawKind: ObjKind;
   selectedId: string | null;
@@ -52,6 +60,8 @@ interface State {
   redo: () => void;
   importData: (d: ExportData) => void;
   resetAll: () => void;
+  setSync: (patch: Partial<State['sync']>) => void;
+  setSyncDialogOpen: (open: boolean) => void;
 }
 
 /** localStorage wrapper that surfaces quota errors instead of throwing mid-render. */
@@ -94,10 +104,14 @@ export const useStore = create<State>()(
   persist(
     (set, get) => ({
       objects: [],
+      deleted: {},
       image: null,
       imageOpacity: 1,
+      planEditedAt: 0,
       started: false,
       mode: 'setup',
+      sync: { status: 'off', lastSynced: null, message: null },
+      syncDialogOpen: false,
       tool: 'select',
       drawKind: 'room',
       selectedId: null,
@@ -198,8 +212,8 @@ export const useStore = create<State>()(
       },
       importData: (d) =>
         set((s) => ({
-          objects: assignRooms(d.objects),
-          image: d.image,
+          objects: assignRooms(d.objects.map(normalizeObj)),
+          image: d.image ? { ...d.image, id: d.image.id ?? newId() } : null,
           imageOpacity: d.imageOpacity ?? 1,
           started: true,
           selectedId: null,
@@ -219,20 +233,111 @@ export const useStore = create<State>()(
           past: [],
           future: [],
         }),
+      setSync: (patch) => set((s) => ({ sync: { ...s.sync, ...patch } })),
+      setSyncDialogOpen: (syncDialogOpen) => set({ syncDialogOpen }),
     }),
     {
       name: 'cleanup-house-v1',
+      version: 2,
       storage: createJSONStorage(() => safeStorage),
       partialize: (s) => ({
         objects: s.objects,
+        deleted: s.deleted,
         image: s.image,
         imageOpacity: s.imageOpacity,
+        planEditedAt: s.planEditedAt,
         started: s.started,
         mode: s.mode,
       }),
+      migrate: (persisted) => {
+        const p = persisted as Partial<State>;
+        return {
+          ...p,
+          objects: (p.objects ?? []).map(normalizeObj),
+          deleted: p.deleted ?? {},
+          planEditedAt: p.planEditedAt ?? 0,
+          image: p.image ? { ...p.image, id: p.image.id ?? newId() } : null,
+        } as State;
+      },
     },
   ),
 );
+
+function normalizeObj(o: CleanObj): CleanObj {
+  return { ...o, editedAt: o.editedAt ?? 0, cleanEditedAt: o.cleanEditedAt ?? 0 };
+}
+
+// ---------- Sync bookkeeping ----------
+// Every local change to objects or the plan is stamped here, in one place, so the
+// rest of the app never has to think about sync. Remote merges bypass stamping.
+
+let applyingRemote = false;
+let localChangeListener: (() => void) | null = null;
+
+export function applyRemote(fn: () => void) {
+  applyingRemote = true;
+  try {
+    fn();
+  } finally {
+    applyingRemote = false;
+  }
+}
+
+export function onLocalChange(fn: () => void) {
+  localChangeListener = fn;
+}
+
+const layoutDiffers = (a: CleanObj, b: CleanObj) =>
+  a.kind !== b.kind ||
+  a.shape !== b.shape ||
+  a.x !== b.x ||
+  a.y !== b.y ||
+  a.w !== b.w ||
+  a.h !== b.h ||
+  a.orient !== b.orient ||
+  a.right !== b.right ||
+  a.name !== b.name ||
+  a.intervalDays !== b.intervalDays;
+
+const cleaningDiffers = (a: CleanObj, b: CleanObj) => a.lastCleaned !== b.lastCleaned || a.history !== b.history;
+
+useStore.subscribe((s, prev) => {
+  if (applyingRemote) return;
+  const objsChanged = s.objects !== prev.objects;
+  const planChanged = s.image?.id !== prev.image?.id || s.imageOpacity !== prev.imageOpacity;
+  if (!objsChanged && !planChanged) return;
+
+  const now = Date.now();
+  const patch: Partial<State> = {};
+  let changed = false;
+
+  if (objsChanged) {
+    const prevById = new Map(prev.objects.map((o) => [o.id, o]));
+    let stamped = false;
+    const objects = s.objects.map((o) => {
+      const p = prevById.get(o.id);
+      let n = o;
+      if (!p || layoutDiffers(p, o)) n = { ...n, editedAt: now };
+      if (p && cleaningDiffers(p, o)) n = { ...n, cleanEditedAt: now };
+      if (n !== o) stamped = true;
+      return n;
+    });
+    const ids = new Set(s.objects.map((o) => o.id));
+    const removed = prev.objects.filter((o) => !ids.has(o.id));
+    if (stamped) patch.objects = objects;
+    if (removed.length) {
+      patch.deleted = { ...s.deleted };
+      for (const o of removed) patch.deleted[o.id] = now;
+    }
+    changed = stamped || removed.length > 0;
+  }
+  if (planChanged) {
+    patch.planEditedAt = now;
+    changed = true;
+  }
+  if (Object.keys(patch).length) useStore.setState(patch);
+  if (changed) localChangeListener?.();
+});
 
 export function newId(): string {
   return typeof crypto !== 'undefined' && 'randomUUID' in crypto

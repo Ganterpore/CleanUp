@@ -3,6 +3,7 @@ import { FloorCanvas } from './components/FloorCanvas';
 import { Header } from './components/Header';
 import { Icon } from './components/Icon';
 import { SetupPanel } from './components/SetupPanel';
+import { SyncDialog } from './components/SyncDialog';
 import { ToolPalette } from './components/ToolPalette';
 import { TrackPanel } from './components/TrackPanel';
 import { Welcome } from './components/Welcome';
@@ -123,7 +124,14 @@ export default function App() {
     if (selectedId) setPanelOpen(true);
   }, [selectedId]);
 
-  if (!started) return <Welcome />;
+  if (!started)
+    return (
+      <>
+        <Welcome />
+        <SyncDialog />
+        <ToastHost />
+      </>
+    );
 
   return (
     <div className={`app mode-${mode}`}>
@@ -145,6 +153,7 @@ export default function App() {
           <div className="panel-scroll">{mode === 'setup' ? <SetupPanel now={now} /> : <TrackPanel now={now} />}</div>
         </aside>
       </main>
+      <SyncDialog />
       <ToastHost />
     </div>
   );

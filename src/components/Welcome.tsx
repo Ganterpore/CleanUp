@@ -47,11 +47,17 @@ export function Welcome() {
             <Icon name="rect" /> Start with a blank canvas
           </button>
         </div>
-        <button className="link" onClick={restore}>
-          Restore from a backup file
-        </button>
+        <div className="welcome-links">
+          <button className="link" onClick={() => useStore.getState().setSyncDialogOpen(true)}>
+            Connect to a synced house
+          </button>
+          <span className="meta">·</span>
+          <button className="link" onClick={restore}>
+            Restore from a backup file
+          </button>
+        </div>
         {error && <p className="warn">{error}</p>}
-        <p className="fine">Everything is stored in this browser. Use Export backup to move between devices.</p>
+        <p className="fine">Your house is saved in this browser. Turn on sync to share it across devices.</p>
       </div>
     </div>
   );

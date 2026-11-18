@@ -53,17 +53,15 @@ type Interaction =
 const coarsePointer = typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches;
 
 function useHtmlImage(src: string | undefined) {
-  const [img, setImg] = useState<HTMLImageElement | null>(null);
+  const [loaded, setLoaded] = useState<{ src: string; el: HTMLImageElement } | null>(null);
   useEffect(() => {
-    if (!src) {
-      setImg(null);
-      return;
-    }
+    if (!src) return;
     const el = new window.Image();
-    el.onload = () => setImg(el);
+    el.onload = () => setLoaded({ src, el });
     el.src = src;
   }, [src]);
-  return img;
+  // Only hand back an element that matches the current src, never a stale one.
+  return loaded && loaded.src === src ? loaded.el : null;
 }
 
 function handlePos(o: CleanObj, h: Handle): Pt {
@@ -267,6 +265,8 @@ export function FloorCanvas({ now }: { now: number }) {
           lastCleaned: null,
           history: [],
           roomId: null,
+          editedAt: Date.now(),
+          cleanEditedAt: 0,
         };
     it.current = c;
     const big = wd >= MIN_SIZE && ht >= MIN_SIZE;
@@ -554,13 +554,13 @@ export function FloorCanvas({ now }: { now: number }) {
           </Layer>
           <Layer>
             {rooms.map(renderShape)}
-            {img && (
+            {img && image && (
               <KImage
                 image={img}
                 x={0}
                 y={0}
-                width={image!.width}
-                height={image!.height}
+                width={image.width}
+                height={image.height}
                 opacity={imageOpacity}
                 globalCompositeOperation="multiply"
                 listening={false}

@@ -15,6 +15,7 @@ const PATHS: Record<string, string> = {
   list: 'M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01',
   close: 'M6 6l12 12M18 6L6 18',
   chevron: 'M6 9l6 6 6-6',
+  cloud: 'M7 18a4.5 4.5 0 01-.6-8.96A6 6 0 0118 8.5a4.75 4.75 0 01-.5 9.5z',
 };
 
 export function Icon({ name, size = 18 }: { name: keyof typeof PATHS | string; size?: number }) {

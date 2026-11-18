@@ -1,3 +1,4 @@
+import { newId } from './store';
 import type { ExportData, FloorImage } from './types';
 
 const MAX_SIDE = 2000;
@@ -19,7 +20,7 @@ export function loadFloorImage(file: File): Promise<FloorImage> {
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(0, 0, width, height);
       ctx.drawImage(img, 0, 0, width, height);
-      resolve({ src: canvas.toDataURL('image/jpeg', 0.88), width, height });
+      resolve({ id: newId(), src: canvas.toDataURL('image/jpeg', 0.88), width, height });
     };
     img.onerror = () => {
       URL.revokeObjectURL(url);
