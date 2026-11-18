@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Ellipse, Image as KImage, Layer, Line, Rect, Shape, Stage, Text } from 'react-konva';
 import { shortStatus, staleness, stalenessColor } from '../freshness';
 import {
-  centerOf,
+  boxShape,
   findLabelSpot,
   isPlacementValid,
   MIN_SIZE,
@@ -13,6 +13,7 @@ import {
   snapTargets,
   snapTranslate,
   unionBBox,
+  type Geo,
   type Guides,
   type Pt,
 } from '../geometry';
@@ -52,7 +53,7 @@ type Interaction =
   | { type: 'pinch'; d0: number; mid0: Pt; view0: View };
 
 let measureCtx: CanvasRenderingContext2D | null = null;
-/** Width in screen px of a single line of label text. */
+/** Width of a single line of label text at the given font size. */
 function measureText(text: string, px: number, weight: string): number {
   measureCtx ??= document.createElement('canvas').getContext('2d');
   if (!measureCtx) return text.length * px * 0.6;
@@ -493,72 +494,70 @@ export function FloorCanvas({ now }: { now: number }) {
     return <Line key={o.id} points={polygonOf(o).flatMap((p) => [p.x, p.y])} closed {...common} />;
   };
 
-  const labelText = (o: CleanObj) => (editing ? o.name : `${o.name}\n${shortStatus(o, now)}`);
+  /**
+   * Lay out every label so text is never chopped and labels never overlap.
+   * Each label tries, in order: full text → smaller font → name only (track mode).
+   * Items are placed first (centred in themselves). A room label then looks for a
+   * spot clear of every item, and failing that, a spot clear of the item labels.
+   * If nothing fits, the label is hidden; the colour still shows the status.
+   */
+  const labelLayouts = useMemo(() => {
+    type Layout = { x: number; y: number; w: number; h: number; text: string; px: number; pad: number };
+    const layouts = new Map<string, Layout>();
+    const pad = 3 / s;
+    const options = (o: CleanObj) => {
+      const base = o.kind === 'room' ? 13 : 11;
+      const weight = o.kind === 'room' ? '600' : '500';
+      const texts = editing ? [o.name] : [`${o.name}\n${shortStatus(o, now)}`, o.name];
+      return texts.flatMap((text) =>
+        [base, base - 2].map((px) => {
+          const lines = text.split('\n');
+          // Measure at the size the canvas actually draws (glyph widths don't scale linearly), plus slack.
+          const w = Math.max(...lines.map((l) => measureText(l, px / s, weight))) + pad * 2 + 2 / s;
+          const h = (lines.length * px * 1.25) / s + pad * 2;
+          return { text, px, w, h };
+        }),
+      );
+    };
+    const place = (o: CleanObj, obstacles: Geo[]) => {
+      for (const opt of options(o)) {
+        const spot = findLabelSpot(o, obstacles, opt.w, opt.h, 3 / s);
+        if (spot) return { ...spot, ...opt, pad };
+      }
+      return null;
+    };
 
-  // Room labels move to the nearest spot clear of items, when there is room for them.
-  const roomLabelSpots = useMemo(() => {
-    const spots = new Map<string, { x: number; y: number; w: number; h: number }>();
-    const itemList = shown.filter((o) => o.kind === 'item');
-    if (!itemList.length) return spots;
-    const pad = 4 / s;
+    const items = shown.filter((o) => o.kind === 'item');
+    for (const i of items) {
+      const l = place(i, []);
+      if (l) layouts.set(i.id, l);
+    }
+    const itemLabelBoxes = [...layouts.values()].map((l) => boxShape(l));
     for (const r of shown) {
       if (r.kind !== 'room') continue;
-      const lines = labelText(r).split('\n');
-      const lw = Math.max(...lines.map((l) => measureText(l, 13, '600'))) / s + pad * 2;
-      const lh = (lines.length * 13 * 1.25) / s + pad * 2;
-      const spot = findLabelSpot(r, itemList, lw, lh, 3 / s);
-      if (spot) spots.set(r.id, { ...spot, w: lw, h: lh });
+      const l = place(r, items) ?? place(r, itemLabelBoxes);
+      if (l) layouts.set(r.id, l);
     }
-    return spots;
-  }, [shown, s, editing, now]); // labelText reads editing + now
+    return layouts;
+  }, [shown, s, editing, now]);
 
   const renderLabel = (o: CleanObj) => {
-    if (o.w * s < 34 || o.h * s < 16) return null;
-    const st = styleFor(o);
-    const c = centerOf(o);
-    const fs = (o.kind === 'room' ? 13 : 11) / s;
-    const text = labelText(o);
-    const spot = roomLabelSpots.get(o.id);
-    if (spot) {
-      return (
-        <Text
-          key={`t-${o.id}`}
-          x={spot.x}
-          y={spot.y}
-          width={spot.w}
-          height={spot.h}
-          text={text}
-          align="center"
-          verticalAlign="middle"
-          fontSize={fs}
-          lineHeight={1.25}
-          fontStyle="600"
-          fontFamily="Inter, system-ui, sans-serif"
-          fill={st.text}
-          padding={4 / s}
-          wrap="none"
-          listening={false}
-        />
-      );
-    }
+    const l = labelLayouts.get(o.id);
+    if (!l) return null;
     return (
+      // No fixed width/height: Konva trims lines that overflow a fixed box, so let it size itself.
       <Text
         key={`t-${o.id}`}
-        x={c.x - o.w / 2}
-        y={c.y - o.h / 2}
-        width={o.w}
-        height={o.h}
-        text={text}
+        x={l.x}
+        y={l.y}
+        text={l.text}
         align="center"
-        verticalAlign="middle"
-        fontSize={fs}
+        fontSize={l.px / s}
         lineHeight={1.25}
         fontStyle={o.kind === 'room' ? '600' : '500'}
         fontFamily="Inter, system-ui, sans-serif"
-        fill={st.text}
-        padding={4 / s}
-        wrap="word"
-        ellipsis
+        fill={styleFor(o).text}
+        padding={l.pad}
         listening={false}
       />
     );
