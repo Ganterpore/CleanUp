@@ -17,7 +17,8 @@ import {
   type Guides,
   type Pt,
 } from '../geometry';
-import { defaultName, newId, useStore } from '../store';
+import { defaultName, newId, useStore, useTheme } from '../store';
+import { luminance, type CanvasTheme } from '../themes';
 import type { CleanObj, ShapeKind } from '../types';
 
 const SNAP_PX = 12;
@@ -54,10 +55,10 @@ type Interaction =
 
 let measureCtx: CanvasRenderingContext2D | null = null;
 /** Width of a single line of label text at the given font size. */
-function measureText(text: string, px: number, weight: string): number {
+function measureText(text: string, px: number, weight: string, font: string): number {
   measureCtx ??= document.createElement('canvas').getContext('2d');
   if (!measureCtx) return text.length * px * 0.6;
-  measureCtx.font = `${weight} ${px}px Inter, system-ui, sans-serif`;
+  measureCtx.font = `${weight} ${px}px ${font}`;
   return measureCtx.measureText(text).width;
 }
 
@@ -73,6 +74,31 @@ function useHtmlImage(src: string | undefined) {
   }, [src]);
   // Only hand back an element that matches the current src, never a stale one.
   return loaded && loaded.src === src ? loaded.el : null;
+}
+
+/**
+ * Recolour a dark-on-white plan for dark themes: invert it (white lines on black)
+ * and optionally tint the lines, so it can be screened onto dark shapes.
+ */
+function useThemedImage(el: HTMLImageElement | null, mode: CanvasTheme['image']) {
+  return useMemo(() => {
+    if (!el || !mode.invert) return el;
+    const c = document.createElement('canvas');
+    c.width = el.naturalWidth;
+    c.height = el.naturalHeight;
+    const ctx = c.getContext('2d');
+    if (!ctx) return el;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, c.width, c.height);
+    ctx.globalCompositeOperation = 'difference';
+    ctx.drawImage(el, 0, 0);
+    if (mode.tint) {
+      ctx.globalCompositeOperation = 'multiply';
+      ctx.fillStyle = mode.tint;
+      ctx.fillRect(0, 0, c.width, c.height);
+    }
+    return c;
+  }, [el, mode.invert, mode.tint]);
 }
 
 function handlePos(o: CleanObj, h: Handle): Pt {
@@ -113,7 +139,8 @@ export function FloorCanvas({ now }: { now: number }) {
   const image = useStore((s) => s.image);
   const imageOpacity = useStore((s) => s.imageOpacity);
   const fitNonce = useStore((s) => s.fitNonce);
-  const img = useHtmlImage(image?.src);
+  const theme = useTheme().canvas;
+  const img = useThemedImage(useHtmlImage(image?.src), theme.image);
 
   // ----- sizing & fit -----
   useEffect(() => {
@@ -461,20 +488,20 @@ export function FloorCanvas({ now }: { now: number }) {
     if (editing) {
       const room = o.kind === 'room';
       return {
-        fill: bad ? 'rgba(239,68,68,0.25)' : room ? 'rgba(59,130,246,0.18)' : 'rgba(245,158,11,0.45)',
-        stroke: bad ? '#dc2626' : isSel ? '#1d4ed8' : room ? '#3b82f6' : '#b45309',
+        fill: bad ? theme.badFill : room ? theme.roomFill : theme.itemFill,
+        stroke: bad ? theme.badEdge : isSel ? theme.selected : room ? theme.roomEdge : theme.itemEdge,
         strokeWidth: isSel ? 2.5 : room ? 1.5 : 1.25,
         dash: bad ? [6, 4] : undefined,
-        text: room ? '#1e3a8a' : '#78350f',
+        text: room ? theme.roomText : theme.itemText,
       };
     }
-    const t = staleness(o, now);
+    const fill = stalenessColor(staleness(o, now), theme);
     return {
-      fill: stalenessColor(t),
-      stroke: o.kind === 'room' ? '#475569' : '#1e293b',
-      strokeWidth: o.kind === 'room' ? 1.5 : 1.5,
+      fill,
+      stroke: o.kind === 'room' ? theme.roomStroke : theme.itemStroke,
+      strokeWidth: 1.5,
       dash: undefined,
-      text: t > 0.72 ? '#ffffff' : '#1e293b',
+      text: luminance(fill) < 0.22 ? theme.textOnDark : theme.textOnLight,
     };
   };
 
@@ -509,12 +536,13 @@ export function FloorCanvas({ now }: { now: number }) {
     const options = (o: CleanObj) => {
       const base = o.kind === 'room' ? 13 : 11;
       const weight = o.kind === 'room' ? '600' : '500';
-      const texts = editing || !showDays ? [o.name] : [`${o.name}\n${shortAgo(o, now)}`, o.name];
+      const raw = editing || !showDays ? [o.name] : [`${o.name}\n${shortAgo(o, now)}`, o.name];
+      const texts = theme.upper ? raw.map((t) => t.toUpperCase()) : raw;
       return texts.flatMap((text) =>
         [base, base - 2].map((px) => {
           const lines = text.split('\n');
           // Measure at the size the canvas actually draws (glyph widths don't scale linearly), plus slack.
-          const w = Math.max(...lines.map((l) => measureText(l, px / s, weight))) + pad * 2 + 2 / s;
+          const w = Math.max(...lines.map((l) => measureText(l, px / s, weight, theme.font))) + pad * 2 + 2 / s;
           const h = (lines.length * px * 1.25) / s + pad * 2;
           return { text, px, w, h };
         }),
@@ -540,7 +568,7 @@ export function FloorCanvas({ now }: { now: number }) {
       if (l) layouts.set(r.id, l);
     }
     return layouts;
-  }, [shown, s, editing, now, showDays]);
+  }, [shown, s, editing, now, showDays, theme]);
 
   const renderLabel = (o: CleanObj) => {
     const l = labelLayouts.get(o.id);
@@ -556,7 +584,7 @@ export function FloorCanvas({ now }: { now: number }) {
         fontSize={l.px / s}
         lineHeight={1.25}
         fontStyle={o.kind === 'room' ? '600' : '500'}
-        fontFamily="Inter, system-ui, sans-serif"
+        fontFamily={theme.font}
         fill={styleFor(o).text}
         padding={l.pad}
         listening={false}
@@ -597,7 +625,7 @@ export function FloorCanvas({ now }: { now: number }) {
                     ctx.moveTo(x0, y);
                     ctx.lineTo(x1, y);
                   }
-                  ctx.strokeStyle = '#e2e8f0';
+                  ctx.strokeStyle = theme.grid;
                   ctx.lineWidth = 1 / s;
                   ctx.stroke();
                 }}
@@ -605,6 +633,10 @@ export function FloorCanvas({ now }: { now: number }) {
             )}
           </Layer>
           <Layer>
+            {/* Screen-blended (inverted) plans need an opaque ground, or their black paints onto the transparent layer. */}
+            {img && image && theme.image.invert && (
+              <Rect x={0} y={0} width={image.width} height={image.height} fill={theme.bg} listening={false} />
+            )}
             {rooms.map(renderShape)}
             {img && image && (
               <KImage
@@ -614,7 +646,7 @@ export function FloorCanvas({ now }: { now: number }) {
                 width={image.width}
                 height={image.height}
                 opacity={imageOpacity}
-                globalCompositeOperation="multiply"
+                globalCompositeOperation={theme.image.invert ? 'screen' : 'multiply'}
                 listening={false}
               />
             )}
@@ -626,7 +658,7 @@ export function FloorCanvas({ now }: { now: number }) {
             {draft?.guides.x != null && (
               <Line
                 points={[draft.guides.x, -bigExtent, draft.guides.x, bigExtent]}
-                stroke="#d946ef"
+                stroke={theme.guide}
                 strokeWidth={1}
                 dash={[4, 4]}
                 strokeScaleEnabled={false}
@@ -636,7 +668,7 @@ export function FloorCanvas({ now }: { now: number }) {
             {draft?.guides.y != null && (
               <Line
                 points={[-bigExtent, draft.guides.y, bigExtent, draft.guides.y]}
-                stroke="#d946ef"
+                stroke={theme.guide}
                 strokeWidth={1}
                 dash={[4, 4]}
                 strokeScaleEnabled={false}
@@ -650,7 +682,7 @@ export function FloorCanvas({ now }: { now: number }) {
                   y={selected.y}
                   width={selected.w}
                   height={selected.h}
-                  stroke="#1d4ed8"
+                  stroke={theme.selected}
                   strokeWidth={1}
                   dash={[3, 3]}
                   strokeScaleEnabled={false}
@@ -667,8 +699,8 @@ export function FloorCanvas({ now }: { now: number }) {
                       width={hs}
                       height={hs}
                       cornerRadius={2 / s}
-                      fill="#ffffff"
-                      stroke="#1d4ed8"
+                      fill={theme.handleFill}
+                      stroke={theme.selected}
                       strokeWidth={1.5}
                       strokeScaleEnabled={false}
                     />

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { downloadJson, loadFloorImage, parseExport, pickFile } from '../imageLoad';
 import { useStore } from '../store';
 import { isSyncConfigured } from '../sync/engine';
+import { THEMES } from '../themes';
 import { Icon } from './Icon';
 import { SyncButton } from './SyncDialog';
 
@@ -11,6 +12,8 @@ export function Header() {
   const requestFit = useStore((s) => s.requestFit);
   const showDays = useStore((s) => s.showDays);
   const setShowDays = useStore((s) => s.setShowDays);
+  const theme = useStore((s) => s.theme);
+  const setTheme = useStore((s) => s.setTheme);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -94,6 +97,25 @@ export function Header() {
                 <span className="check-box">{showDays && <Icon name="check" size={14} />}</span>
                 Show days since cleaned
               </button>
+              <hr />
+              <div className="menu-label">Theme</div>
+              <div className="theme-grid" role="radiogroup" aria-label="Theme">
+                {THEMES.map((t) => (
+                  <button
+                    key={t.id}
+                    role="radio"
+                    aria-checked={theme === t.id}
+                    className={`theme-opt${theme === t.id ? ' on' : ''}`}
+                    onClick={() => setTheme(t.id)}
+                  >
+                    <span
+                      className="theme-dot"
+                      style={{ background: `linear-gradient(135deg, ${t.swatch[0]} 0 50%, ${t.swatch[1]} 50% 100%)` }}
+                    />
+                    {t.name}
+                  </button>
+                ))}
+              </div>
               <hr />
               <button role="menuitem" onClick={run(exportData)}>Export backup</button>
               <button role="menuitem" onClick={run(importData)}>Import backup…</button>
