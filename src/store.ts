@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist, type StateStorage } from 'zustand/middleware';
 import { assignRooms, isPlacementValid } from './geometry';
+import { DEFAULT_THEME, getTheme, type ThemeId } from './themes';
 import type { CleanObj, ExportData, FloorImage, Mode, ObjKind, Tool } from './types';
 
 export interface Toast {
@@ -24,6 +25,8 @@ interface State {
   mode: Mode;
   /** Show "days since cleaned" under names on the plan (per device, not synced). */
   showDays: boolean;
+  /** Colour theme (per device, not synced). */
+  theme: ThemeId;
   // session-only
   sync: { status: SyncStatus; lastSynced: number | null; message: string | null };
   syncDialogOpen: boolean;
@@ -40,6 +43,7 @@ interface State {
   setImageOpacity: (v: number) => void;
   setMode: (m: Mode) => void;
   setShowDays: (v: boolean) => void;
+  setTheme: (t: ThemeId) => void;
   setTool: (t: Tool) => void;
   setDrawKind: (k: ObjKind) => void;
   select: (id: string | null) => void;
@@ -114,6 +118,7 @@ export const useStore = create<State>()(
       started: false,
       mode: 'setup',
       showDays: true,
+      theme: DEFAULT_THEME,
       sync: { status: 'off', lastSynced: null, message: null },
       syncDialogOpen: false,
       tool: 'select',
@@ -129,6 +134,7 @@ export const useStore = create<State>()(
       setImageOpacity: (imageOpacity) => set({ imageOpacity }),
       setMode: (mode) => set({ mode, tool: 'select', selectedId: null }),
       setShowDays: (showDays) => set({ showDays }),
+      setTheme: (theme) => set({ theme }),
       setTool: (tool) => set({ tool, selectedId: tool === 'select' ? get().selectedId : null }),
       setDrawKind: (drawKind) => set({ drawKind }),
       select: (selectedId) => set({ selectedId }),
@@ -254,6 +260,7 @@ export const useStore = create<State>()(
         started: s.started,
         mode: s.mode,
         showDays: s.showDays,
+        theme: s.theme,
       }),
       migrate: (persisted) => {
         const p = persisted as Partial<State>;
@@ -263,6 +270,7 @@ export const useStore = create<State>()(
           deleted: p.deleted ?? {},
           planEditedAt: p.planEditedAt ?? 0,
           showDays: p.showDays ?? true,
+          theme: p.theme ?? DEFAULT_THEME,
           image: p.image ? { ...p.image, id: p.image.id ?? newId() } : null,
         } as State;
       },
@@ -355,4 +363,9 @@ export function newId(): string {
 export function defaultName(kind: ObjKind, objects: CleanObj[]): string {
   const n = objects.filter((o) => o.kind === kind).length + 1;
   return kind === 'room' ? `Room ${n}` : `Item ${n}`;
+}
+
+/** The active theme object, for components that colour things in JS. */
+export function useTheme() {
+  return getTheme(useStore((s) => s.theme));
 }

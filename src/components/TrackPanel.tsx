@@ -1,11 +1,12 @@
 import { everyText, lastCleanedText, staleness, stalenessColor } from '../freshness';
-import { useStore } from '../store';
+import { useStore, useTheme } from '../store';
 import { Icon } from './Icon';
 
 export function TrackPanel({ now }: { now: number }) {
   const objects = useStore((s) => s.objects);
   const markCleaned = useStore((s) => s.markCleaned);
   const setMode = useStore((s) => s.setMode);
+  const theme = useTheme().canvas;
   const roomName = new Map(objects.filter((o) => o.kind === 'room').map((r) => [r.id, r.name]));
 
   const rows = objects
@@ -41,7 +42,7 @@ export function TrackPanel({ now }: { now: number }) {
       <ul className="todo">
         {rows.map(({ o, t }) => (
           <li key={o.id}>
-            <span className="swatch" style={{ background: stalenessColor(t) }} />
+            <span className="swatch" style={{ background: stalenessColor(t, theme) }} />
             <div className="todo-text">
               <div className="name">
                 {o.name || 'Untitled'}

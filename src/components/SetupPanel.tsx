@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { everyText, lastCleanedText, staleness, stalenessColor } from '../freshness';
-import { useStore } from '../store';
+import { useStore, useTheme } from '../store';
 import type { CleanObj } from '../types';
 import { Icon } from './Icon';
 
@@ -111,6 +111,7 @@ function ObjectEditor({ o, now }: { o: CleanObj; now: number }) {
   const select = useStore((st) => st.select);
   const room = useStore((st) => (o.roomId ? st.objects.find((r) => r.id === o.roomId) : undefined));
   const childCount = useStore((st) => st.objects.filter((i) => i.kind === 'item' && i.roomId === o.id).length);
+  const theme = useTheme().canvas;
   const t = staleness(o, now);
 
   const [daysText, setDaysText] = useState(String(o.intervalDays));
@@ -215,7 +216,7 @@ function ObjectEditor({ o, now }: { o: CleanObj; now: number }) {
       <div className="field">
         <span>Starting state</span>
         <div className="status-line">
-          <span className="swatch" style={{ background: stalenessColor(t) }} />
+          <span className="swatch" style={{ background: stalenessColor(t, theme) }} />
           {lastCleanedText(o, now)}
         </div>
         <div className="row">
