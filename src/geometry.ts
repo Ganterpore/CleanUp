@@ -250,3 +250,72 @@ export function unionBBox(boxes: BBox[]): BBox | null {
   }
   return { x: x1, y: y1, w: x2 - x1, h: y2 - y1 };
 }
+
+// ---------- Label placement ----------
+
+const rectGeo = (b: BBox): Geo => ({ shape: 'rect', x: b.x, y: b.y, w: b.w, h: b.h, orient: 0, right: false });
+
+/**
+ * Find where to put a room's label (a lw × lh box) so it stays inside the room
+ * and clear of the given obstacles (items). Tries the centre first, then the
+ * nearest free spot on a grid. If nothing is clear, it picks the spot
+ * furthest from the items' own labels. Returns the label's top-left, or null
+ * if the label doesn't fit in the room at all (the caller then centres it).
+ */
+export function findLabelSpot(room: Geo, obstacles: Geo[], lw: number, lh: number, pad: number): Pt | null {
+  if (lw > room.w || lh > room.h) return null;
+  const roomBox = { x: room.x, y: room.y, w: room.w, h: room.h };
+  const near = obstacles.filter((o) => bboxesTouch(roomBox, o, pad));
+  const c = centerOf(room);
+
+  const fits = (cx: number, cy: number) => {
+    const box = { x: cx - lw / 2, y: cy - lh / 2, w: lw, h: lh };
+    const corners = [
+      { x: box.x, y: box.y },
+      { x: box.x + lw, y: box.y },
+      { x: box.x + lw, y: box.y + lh },
+      { x: box.x, y: box.y + lh },
+    ];
+    if (!corners.every((p) => pointInShape(p, room))) return false;
+    const padded = rectGeo({ x: box.x - pad, y: box.y - pad, w: lw + pad * 2, h: lh + pad * 2 });
+    return !near.some((o) => shapesOverlap(padded, o, 0));
+  };
+
+  const candidates: Pt[] = [c];
+  const steps = 14;
+  const x0 = room.x + lw / 2;
+  const x1 = room.x + room.w - lw / 2;
+  const y0 = room.y + lh / 2;
+  const y1 = room.y + room.h - lh / 2;
+  for (let i = 0; i <= steps; i++) {
+    for (let j = 0; j <= steps; j++) {
+      candidates.push({ x: x0 + ((x1 - x0) * i) / steps, y: y0 + ((y1 - y0) * j) / steps });
+    }
+  }
+  candidates.sort((a, b) => Math.hypot(a.x - c.x, a.y - c.y) - Math.hypot(b.x - c.x, b.y - c.y));
+
+  for (const p of candidates) if (fits(p.x, p.y)) return { x: p.x - lw / 2, y: p.y - lh / 2 };
+
+  // No clear space: at least keep away from the items' own labels (drawn at their centres).
+  const itemCentres = near.map(centerOf);
+  if (!itemCentres.length) return null;
+  const insideRoom = (p: Pt) =>
+    [
+      { x: p.x - lw / 2, y: p.y - lh / 2 },
+      { x: p.x + lw / 2, y: p.y - lh / 2 },
+      { x: p.x + lw / 2, y: p.y + lh / 2 },
+      { x: p.x - lw / 2, y: p.y + lh / 2 },
+    ].every((q) => pointInShape(q, room));
+  let best: Pt | null = null;
+  let bestScore = -Infinity;
+  for (const p of candidates) {
+    if (!insideRoom(p)) continue;
+    // Distance in "label units", so vertical separation counts as much as horizontal.
+    const score = Math.min(...itemCentres.map((q) => Math.max(Math.abs(p.x - q.x) / lw, Math.abs(p.y - q.y) / lh)));
+    if (score > bestScore + 1e-9) {
+      bestScore = score;
+      best = p;
+    }
+  }
+  return best ? { x: best.x - lw / 2, y: best.y - lh / 2 } : null;
+}

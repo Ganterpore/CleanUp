@@ -4,6 +4,7 @@ import { Ellipse, Image as KImage, Layer, Line, Rect, Shape, Stage, Text } from 
 import { shortStatus, staleness, stalenessColor } from '../freshness';
 import {
   centerOf,
+  findLabelSpot,
   isPlacementValid,
   MIN_SIZE,
   polygonOf,
@@ -49,6 +50,15 @@ type Interaction =
   | { type: 'resize'; handle: Handle; orig: CleanObj; last: CleanObj | null }
   | { type: 'draw'; startW: Pt; last: CleanObj | null; current: CleanObj | null }
   | { type: 'pinch'; d0: number; mid0: Pt; view0: View };
+
+let measureCtx: CanvasRenderingContext2D | null = null;
+/** Width in screen px of a single line of label text. */
+function measureText(text: string, px: number, weight: string): number {
+  measureCtx ??= document.createElement('canvas').getContext('2d');
+  if (!measureCtx) return text.length * px * 0.6;
+  measureCtx.font = `${weight} ${px}px Inter, system-ui, sans-serif`;
+  return measureCtx.measureText(text).width;
+}
 
 const coarsePointer = typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches;
 
@@ -483,12 +493,54 @@ export function FloorCanvas({ now }: { now: number }) {
     return <Line key={o.id} points={polygonOf(o).flatMap((p) => [p.x, p.y])} closed {...common} />;
   };
 
+  const labelText = (o: CleanObj) => (editing ? o.name : `${o.name}\n${shortStatus(o, now)}`);
+
+  // Room labels move to the nearest spot clear of items, when there is room for them.
+  const roomLabelSpots = useMemo(() => {
+    const spots = new Map<string, { x: number; y: number; w: number; h: number }>();
+    const itemList = shown.filter((o) => o.kind === 'item');
+    if (!itemList.length) return spots;
+    const pad = 4 / s;
+    for (const r of shown) {
+      if (r.kind !== 'room') continue;
+      const lines = labelText(r).split('\n');
+      const lw = Math.max(...lines.map((l) => measureText(l, 13, '600'))) / s + pad * 2;
+      const lh = (lines.length * 13 * 1.25) / s + pad * 2;
+      const spot = findLabelSpot(r, itemList, lw, lh, 3 / s);
+      if (spot) spots.set(r.id, { ...spot, w: lw, h: lh });
+    }
+    return spots;
+  }, [shown, s, editing, now]); // labelText reads editing + now
+
   const renderLabel = (o: CleanObj) => {
     if (o.w * s < 34 || o.h * s < 16) return null;
     const st = styleFor(o);
     const c = centerOf(o);
     const fs = (o.kind === 'room' ? 13 : 11) / s;
-    const text = editing ? o.name : `${o.name}\n${shortStatus(o, now)}`;
+    const text = labelText(o);
+    const spot = roomLabelSpots.get(o.id);
+    if (spot) {
+      return (
+        <Text
+          key={`t-${o.id}`}
+          x={spot.x}
+          y={spot.y}
+          width={spot.w}
+          height={spot.h}
+          text={text}
+          align="center"
+          verticalAlign="middle"
+          fontSize={fs}
+          lineHeight={1.25}
+          fontStyle="600"
+          fontFamily="Inter, system-ui, sans-serif"
+          fill={st.text}
+          padding={4 / s}
+          wrap="none"
+          listening={false}
+        />
+      );
+    }
     return (
       <Text
         key={`t-${o.id}`}
