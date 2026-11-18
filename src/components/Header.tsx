@@ -9,6 +9,8 @@ export function Header() {
   const mode = useStore((s) => s.mode);
   const setMode = useStore((s) => s.setMode);
   const requestFit = useStore((s) => s.requestFit);
+  const showDays = useStore((s) => s.showDays);
+  const setShowDays = useStore((s) => s.setShowDays);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -88,6 +90,11 @@ export function Header() {
               <button role="menuitem" onClick={run(replaceImage)}>
                 {useStore.getState().image ? 'Replace floor plan image…' : 'Add floor plan image…'}
               </button>
+              <button role="menuitemcheckbox" aria-checked={showDays} className="check-item" onClick={run(() => setShowDays(!showDays))}>
+                <span className="check-box">{showDays && <Icon name="check" size={14} />}</span>
+                Show days since cleaned
+              </button>
+              <hr />
               <button role="menuitem" onClick={run(exportData)}>Export backup</button>
               <button role="menuitem" onClick={run(importData)}>Import backup…</button>
               <hr />

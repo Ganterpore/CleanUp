@@ -1,7 +1,7 @@
 import Konva from 'konva';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Ellipse, Image as KImage, Layer, Line, Rect, Shape, Stage, Text } from 'react-konva';
-import { shortStatus, staleness, stalenessColor } from '../freshness';
+import { shortAgo, staleness, stalenessColor } from '../freshness';
 import {
   boxShape,
   findLabelSpot,
@@ -452,6 +452,7 @@ export function FloorCanvas({ now }: { now: number }) {
   const selected = mode === 'setup' ? shown.find((o) => o.id === selectedId) : undefined;
   const s = view.scale;
   const editing = mode === 'setup';
+  const showDays = useStore((st) => st.showDays);
 
   const styleFor = (o: CleanObj) => {
     const isDraft = !!draft?.objs[o.id];
@@ -508,7 +509,7 @@ export function FloorCanvas({ now }: { now: number }) {
     const options = (o: CleanObj) => {
       const base = o.kind === 'room' ? 13 : 11;
       const weight = o.kind === 'room' ? '600' : '500';
-      const texts = editing ? [o.name] : [`${o.name}\n${shortStatus(o, now)}`, o.name];
+      const texts = editing || !showDays ? [o.name] : [`${o.name}\n${shortAgo(o, now)}`, o.name];
       return texts.flatMap((text) =>
         [base, base - 2].map((px) => {
           const lines = text.split('\n');
@@ -539,7 +540,7 @@ export function FloorCanvas({ now }: { now: number }) {
       if (l) layouts.set(r.id, l);
     }
     return layouts;
-  }, [shown, s, editing, now]);
+  }, [shown, s, editing, now, showDays]);
 
   const renderLabel = (o: CleanObj) => {
     const l = labelLayouts.get(o.id);

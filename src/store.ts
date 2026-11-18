@@ -22,6 +22,8 @@ interface State {
   planEditedAt: number;
   started: boolean;
   mode: Mode;
+  /** Show "days since cleaned" under names on the plan (per device, not synced). */
+  showDays: boolean;
   // session-only
   sync: { status: SyncStatus; lastSynced: number | null; message: string | null };
   syncDialogOpen: boolean;
@@ -37,6 +39,7 @@ interface State {
   setImage: (image: FloorImage | null) => void;
   setImageOpacity: (v: number) => void;
   setMode: (m: Mode) => void;
+  setShowDays: (v: boolean) => void;
   setTool: (t: Tool) => void;
   setDrawKind: (k: ObjKind) => void;
   select: (id: string | null) => void;
@@ -110,6 +113,7 @@ export const useStore = create<State>()(
       planEditedAt: 0,
       started: false,
       mode: 'setup',
+      showDays: true,
       sync: { status: 'off', lastSynced: null, message: null },
       syncDialogOpen: false,
       tool: 'select',
@@ -124,6 +128,7 @@ export const useStore = create<State>()(
       setImage: (image) => set((s) => ({ image, fitNonce: s.fitNonce + 1 })),
       setImageOpacity: (imageOpacity) => set({ imageOpacity }),
       setMode: (mode) => set({ mode, tool: 'select', selectedId: null }),
+      setShowDays: (showDays) => set({ showDays }),
       setTool: (tool) => set({ tool, selectedId: tool === 'select' ? get().selectedId : null }),
       setDrawKind: (drawKind) => set({ drawKind }),
       select: (selectedId) => set({ selectedId }),
@@ -248,6 +253,7 @@ export const useStore = create<State>()(
         planEditedAt: s.planEditedAt,
         started: s.started,
         mode: s.mode,
+        showDays: s.showDays,
       }),
       migrate: (persisted) => {
         const p = persisted as Partial<State>;
@@ -256,6 +262,7 @@ export const useStore = create<State>()(
           objects: (p.objects ?? []).map(normalizeObj),
           deleted: p.deleted ?? {},
           planEditedAt: p.planEditedAt ?? 0,
+          showDays: p.showDays ?? true,
           image: p.image ? { ...p.image, id: p.image.id ?? newId() } : null,
         } as State;
       },

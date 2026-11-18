@@ -411,7 +411,7 @@ h3 {
 .legend-bar {
   height: 10px;
   border-radius: 99px;
-  background: linear-gradient(90deg, #fff, rgb(249, 115, 22), rgb(220, 38, 38));
+  background: linear-gradient(90deg, #fff 0%, #fff 25%, rgb(249, 115, 22) 50%, rgb(220, 38, 38) 100%);
   border: 1px solid var(--line);
 }
 .legend-labels {
@@ -561,6 +561,26 @@ h3 {
 }
 .menu button:hover {
   background: #f1f5f9;
+}
+.menu button.check-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.check-box {
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid var(--ink-3);
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+.check-item[aria-checked='true'] .check-box {
+  background: var(--accent, #2563eb);
+  border-color: var(--accent, #2563eb);
+  color: #fff;
 }
 .menu button.danger {
   color: var(--danger);
